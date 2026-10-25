@@ -89,6 +89,7 @@ COMBINED_AXIS_ACTION_ITEMS: List[Tuple[str, str, str, int]] = [
     ("PAN_VIEW", "Pan", "Pan the viewport", 2),
     ("ROTATE_VIEW", "Rotate", "Orbit the viewport", 3),
     ("ORBIT_SELECTED", "Orbit", "Orbit around the selection", 4),
+    ("MOVE_WORLD_PLANE", "Move in World Horizontal Plane", "Move relative to the view heading, constrained to world XY", 5),
 ]
 
 SEPARATE_AXIS_ACTION_ITEMS: List[Tuple[str, str, str, int]] = [
@@ -101,6 +102,10 @@ SEPARATE_AXIS_ACTION_ITEMS: List[Tuple[str, str, str, int]] = [
     ("ORBIT_LR", "Orbit Left/Right", "Orbit around the selection horizontally", 6),
     ("ORBIT_UD", "Orbit Up/Down", "Orbit around the selection vertically", 7),
     ("ZOOM_VIEW", "Zoom", "Zoom the view in and out", 8),
+    ("MOVE_WORLD_LR", "Move in World Plane Left/Right", "Move sideways in world XY, ignoring view pitch", 9),
+    ("MOVE_WORLD_FB", "Move in World Plane Forward/Back", "Move forward/backward in world XY, ignoring view pitch", 10),
+    ("VIEWPORT_MOVE_UP", "Viewport Move Up", "Move the viewport along world +Z", 11),
+    ("VIEWPORT_MOVE_DOWN", "Viewport Move Down", "Move the viewport along world -Z", 12),
 ]
 
 def _make_label_dict(items: List[Tuple[str, str, str, int]]) -> Dict[str, str]:
@@ -133,6 +138,14 @@ def format_separate_axis_label(identifier: str) -> str:
 
 
 class GamepadAxisSettings(PropertyGroup):
+    world_move_speed: FloatProperty(
+        name="World Move Speed", description="World-plane and world-Z axis movement in Blender units per second",
+        min=0.0, max=100.0, default=2.0,
+    )
+    world_move_sensitivity: FloatProperty(
+        name="World Move Sensitivity", description="Sensitivity multiplier for world movement axes",
+        min=0.0, max=10.0, default=1.0,
+    )
     stick_mode: EnumProperty(
         name="Stick Mode",
         items=STICK_MODE_ITEMS,

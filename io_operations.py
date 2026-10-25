@@ -42,6 +42,8 @@ def axis_settings_to_dict(axis: GamepadAxisSettings) -> Dict[str, Any]:
     """Serialize GamepadAxisSettings to a dictionary."""
     return {
         "stick_mode": axis.stick_mode,
+        "world_move_speed": axis.world_move_speed,
+        "world_move_sensitivity": axis.world_move_sensitivity,
         "invert_x": axis.invert_x,
         "invert_y": axis.invert_y,
         "combined_action": axis.combined_action,

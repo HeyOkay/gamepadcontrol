@@ -118,7 +118,7 @@ class AnalogTriggerTests(unittest.TestCase):
 
     def test_each_supported_action_dispatches_proportional_value(self):
         for action, *_ in prefs.SEPARATE_AXIS_ACTION_ITEMS:
-            if action in {'NONE', 'ZOOM_VIEW'}:
+            if action in {'NONE', 'ZOOM_VIEW'} | self.executor.WORLD_AXIS_ACTIONS:
                 continue
             self.side.trigger_axis_action = action
             with patch.object(self.executor, '_execute_separate_axis_action') as call:
@@ -267,6 +267,144 @@ class AnalogTriggerTests(unittest.TestCase):
         with patch.object(self.executor, '_find_view3d_area', return_value=(None, None)):
             self.held_button('VIEWPORT_MOVE_UP')
         self.assertEqual(self.rv.view_location, before)
+
+    def world_stick(self, x, y):
+        self.executor._reader = dict(zip(self.executor.LEFT_AXIS_KEYS, (x, y)))
+        self.executor._process_axes(self.executor.LEFT_AXIS_KEYS, self.mode, self.side.axis)
+
+    def test_world_plane_is_horizontal_at_all_pitches_and_headings(self):
+        axis = self.side.axis
+        axis.combined_action = 'MOVE_WORLD_PLANE'
+        for yaw in (0.0, .7, 2.4):
+            expected_right = Vector((math.cos(yaw), math.sin(yaw), 0))
+            expected_forward = Vector((-math.sin(yaw), math.cos(yaw), 0))
+            for pitch in (-math.pi/2, 0, .7, math.pi/2, 2.8):
+                self.rv.view_rotation = Quaternion((0, 0, 1), yaw) @ Quaternion((1, 0, 0), pitch)
+                for raw, expected in (((1, 0), expected_right), ((0, -1), expected_forward)):
+                    self.rv.view_location = Vector((0, 0, 7))
+                    self.world_stick(*raw)
+                    delta = self.rv.view_location - Vector((0, 0, 7))
+                    self.assertLess((delta - expected * (2 / 60)).length, 1e-6)
+                    self.assertEqual(self.rv.view_location.z, 7)
+
+    def test_world_plane_deadzone_sensitivity_inversion_and_diagonal(self):
+        axis = self.side.axis
+        axis.combined_action = 'MOVE_WORLD_PLANE'
+        self.rv.view_rotation = Quaternion((1, 0, 0), 1.0)
+        self.rv.view_location = Vector((0, 0, 7))
+        self.world_stick(.05, -.05)
+        self.assertEqual(tuple(self.rv.view_location), (0, 0, 7))
+        self.world_stick(.55, 0)
+        self.assertAlmostEqual(self.rv.view_location.x, 1 / 60, places=6)
+        axis.world_move_sensitivity = 2
+        axis.invert_x = True
+        self.world_stick(.55, 0)
+        self.assertAlmostEqual(self.rv.view_location.x, -1 / 60, places=6)
+        axis.world_move_sensitivity = 1
+        axis.invert_x = False
+        before = self.rv.view_location.copy()
+        self.world_stick(1, -1)
+        self.assertAlmostEqual((self.rv.view_location - before).length, 2 / 60, places=6)
+        axis.axis_deadzone_x = axis.axis_deadzone_y = 1
+        before = self.rv.view_location.copy()
+        self.world_stick(1, -1)
+        self.assertEqual(self.rv.view_location, before)
+
+    def test_world_plane_roll_fallback_camera_lock_and_missing_viewport(self):
+        self.rv.view_rotation = Quaternion((0, 1, 0), math.pi / 2)
+        self.rv.view_location = Vector((0, 0, 7))
+        self.rv.view_perspective = 'CAMERA'
+        self.area.spaces.active.lock_camera = True
+        self.side.axis.combined_action = 'MOVE_WORLD_PLANE'
+        self.world_stick(1, 0)
+        self.assertAlmostEqual(self.rv.view_location.y, 2 / 60, places=6)
+        self.assertEqual(self.rv.view_location.z, 7)
+        self.assertEqual(self.rv.view_perspective, 'PERSP')
+        before = self.rv.view_location.copy()
+        with patch.object(self.executor, '_find_view3d_area', return_value=(None, None)):
+            self.world_stick(1, 0)
+        self.assertEqual(self.rv.view_location, before)
+        self.area.spaces.active.lock_camera = False
+
+    def test_world_plane_and_analog_z_are_rate_independent(self):
+        self.side.axis.combined_action = 'MOVE_WORLD_PLANE'
+        self.side.trigger_axis_action = 'VIEWPORT_MOVE_UP'
+        self.mode.viewport_move_speed = 3
+        self.rv.view_rotation = Quaternion((1, 0, 0), .7)
+        for rate in (30, 60, 120):
+            self.rv.view_location = Vector((0, 0, 0))
+            self.executor._analog_frame_scale = 60 / rate
+            for _ in range(rate):
+                self.world_stick(0, -1)
+                self.press(.525)
+            self.assertAlmostEqual(self.rv.view_location.y, 2.0, places=4)
+            self.assertAlmostEqual(self.rv.view_location.z, 1.5, places=4)
+
+    def test_analog_z_pressure_direction_invert_and_release(self):
+        self.rv.view_location = Vector((1, 2, 3))
+        self.side.trigger_axis_action = 'VIEWPORT_MOVE_UP'
+        self.side.trigger_sensitivity = 2
+        self.mode.viewport_move_speed = 3
+        self.press(.525)
+        self.assertAlmostEqual(self.rv.view_location.z, 3.05, places=5)
+        self.press(1)
+        self.assertAlmostEqual(self.rv.view_location.z, 3.15, places=5)
+        self.press(.04)
+        self.assertAlmostEqual(self.rv.view_location.z, 3.15, places=5)
+        self.side.trigger_invert = True
+        self.press(.525)
+        self.assertAlmostEqual(self.rv.view_location.z, 3.10, places=5)
+        self.side.trigger_invert = False
+        self.side.trigger_axis_action = 'VIEWPORT_MOVE_DOWN'
+        self.press(.525)
+        self.assertAlmostEqual(self.rv.view_location.z, 3.05, places=5)
+        self.assertEqual(tuple(self.rv.view_location)[:2], (1, 2))
+
+    def test_separate_world_axes_and_world_actions_on_triggers(self):
+        axis = self.side.axis
+        axis.stick_mode = 'SEPARATE'
+        axis.axis_x_action = 'MOVE_WORLD_LR'
+        axis.axis_y_action = 'VIEWPORT_MOVE_UP'
+        self.rv.view_rotation = Quaternion((1, 0, 0), .7)
+        self.rv.view_location = Vector((0, 0, 0))
+        self.world_stick(.55, -.55)
+        self.assertAlmostEqual(self.rv.view_location.x, 1 / 60, places=6)
+        self.assertAlmostEqual(self.rv.view_location.z, 1 / 60, places=6)
+        self.side.trigger_axis_action = 'MOVE_WORLD_FB'
+        self.press(.525)
+        self.assertAlmostEqual(self.rv.view_location.y, 1 / 60, places=6)
+
+    def test_world_settings_roundtrip_preserves_old_mappings_and_enum_ids(self):
+        axis = self.side.axis
+        axis.combined_action = 'MOVE_WORLD_PLANE'
+        axis.world_move_speed = 3.5
+        axis.world_move_sensitivity = .7
+        axis.invert_x = True
+        axis.axis_deadzone_x = .2
+        self.side.trigger_axis_action = 'VIEWPORT_MOVE_DOWN'
+        data = io.side_settings_to_dict(self.side)
+        io.dict_to_side_settings(data, self.mode.right_side)
+        self.assertEqual(data, io.side_settings_to_dict(self.mode.right_side))
+        legacy = bpy.context.window_manager.test_gamepad_modes.add().left_side
+        io.dict_to_side_settings({'axis': {'combined_action': 'PAN_VIEW', 'pan_speed': .2},
+                                 'trigger_action': 'MOUSE_LEFT'}, legacy)
+        self.assertEqual(legacy.axis.combined_action, 'PAN_VIEW')
+        self.assertAlmostEqual(legacy.axis.pan_speed, .2)
+        self.assertEqual(legacy.trigger_mode, 'BUTTON')
+        self.assertEqual([item[3] for item in prefs.COMBINED_AXIS_ACTION_ITEMS[:5]], list(range(5)))
+        self.assertEqual([item[3] for item in prefs.SEPARATE_AXIS_ACTION_ITEMS[:9]], list(range(9)))
+
+    def test_legacy_screen_pan_remains_distinct(self):
+        axis = self.side.axis
+        self.rv.view_rotation = Quaternion((1, 0, 0), math.pi / 2)
+        self.rv.view_location = Vector((0, 0, 7))
+        axis.combined_action = 'PAN_VIEW'
+        self.world_stick(0, -1)
+        self.assertGreater(self.rv.view_location.z, 7)
+        before_z = self.rv.view_location.z
+        axis.combined_action = 'MOVE_WORLD_PLANE'
+        self.world_stick(0, -1)
+        self.assertEqual(self.rv.view_location.z, before_z)
 
 
 if __name__ == '__main__':
