@@ -277,6 +277,14 @@ def _draw_side(layout, side: GamepadSideSettings, title: str) -> None:
         ]
     
     for attr, label in button_fields:
+        if attr == "trigger_action":
+            col.prop(side, "trigger_mode", text=label + " Mode")
+            if side.trigger_mode == 'ANALOG':
+                col.prop(side, "trigger_axis_action", text=label + " Action")
+                col.prop(side, "trigger_sensitivity")
+                col.prop(side, "trigger_deadzone")
+                col.prop(side, "trigger_invert")
+                continue
         # Show target mode selector if action is TEMP_MODE_SHIFT
         action_value = getattr(side, attr, 'NONE')
         if action_value == 'TEMP_MODE_SHIFT':

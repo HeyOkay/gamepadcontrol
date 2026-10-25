@@ -70,6 +70,38 @@ BCL - Blender Controller Link
 
 ## Known Issues
 
+### Analog LT / RT navigation
+
+In Preferences > Input > Gamepad, expand a mode and set each trigger's
+Mode to **Analog**. Select **Zoom**, Move (dolly), horizontal/vertical Pan,
+local Rotate, or horizontal/vertical Orbit. Button mode remains the default
+and preserves existing mappings, including mouse wheel emulation.
+
+For Xbox zoom, set both triggers to Analog / Zoom, enable **Invert** on LT,
+and leave it disabled on RT. LT zooms out and RT zooms in. Start with
+Sensitivity **0.35** and Dead Zone **0.05** on both; adjust to taste.
+Pressure above the dead zone is rescaled continuously to the full range.
+Sensitivity is independent of stick speeds. Invert reverses the direction
+for every analog action. Both triggers work independently and may have
+different actions. Equal opposing zoom pressure cancels away from the
+minimum view distance.
+
+Analog actions only change RegionView3D navigation state and do not send
+mouse wheel, mouse button, or transform events. Starting analog navigation
+in camera view leaves camera view for perspective, including when Lock
+Camera to View is enabled, so the scene camera is not moved. Trigger
+settings are included in the existing JSON import/export system and the
+overlay shows the analog action and direction.
+
+Regression tests use actual Blender RNA and viewport data. With the bundled
+SDL dependencies installed, run:
+
+```sh
+blender --background --factory-startup --python-exit-code 1 --python tests/test_analog_triggers.py
+```
+
+These automated tests do not replace physical controller acceptance tests.
+
 ### Window Control Freeze (Currently Unresolvable)
 
 When using mouse button actions mapped to gamepad triggers (e.g., left trigger for LEFTMOUSE), clicking on Blender's window controls (titlebar, minimize, maximize, close) or dragging the window may cause the interface to freeze.

@@ -16,6 +16,7 @@
 # pyright: reportInvalidTypeForm=false
 
 import math
+import time
 
 import bpy
 from mathutils import Vector, Quaternion
@@ -75,6 +76,8 @@ class ControllerActionExecutor:
     DEFAULT_ZOOM_SPEED = 0.05
 
     def __init__(self):
+        self._analog_last_time = None
+        self._analog_frame_scale = 1.0
         self.button_state = {}
         self.axis_state = {}
         self.active_mouse_buttons = set()
@@ -210,6 +213,11 @@ class ControllerActionExecutor:
             self._last_view3d_area = view3d_area
 
     def apply(self, context, reader):
+        now = time.monotonic()
+        elapsed = 1.0 / 60.0 if self._analog_last_time is None else now - self._analog_last_time
+        self._analog_last_time = now
+        # Bound pauses (file dialogs, window dragging, reconnects) to avoid jumps.
+        self._analog_frame_scale = max(0.0, min(elapsed, 0.1)) * 60.0
         self._reader = reader
         
         # Verify that mouse buttons we think are pressed are actually still pressed
@@ -312,6 +320,11 @@ class ControllerActionExecutor:
             self._execute_button_release(action)
 
     def _process_trigger(self, trigger, mode, action, side=None):
+        if side and getattr(side, "trigger_mode", 'BUTTON') == 'ANALOG':
+            if self.button_state.pop(self._state_key(mode, trigger), False):
+                self._execute_button_release(action)
+            self._process_analog_trigger(trigger, side)
+            return
         if action == 'NONE' or not trigger:
             return
         value = self._reader.get(trigger, 0.0)
@@ -335,6 +348,39 @@ class ControllerActionExecutor:
                     self.active_mouse_buttons.discard('LEFTMOUSE')
                 elif action == 'MOUSE_RIGHT' and 'RIGHTMOUSE' in self.active_mouse_buttons:
                     self.active_mouse_buttons.discard('RIGHTMOUSE')
+
+    def _process_analog_trigger(self, trigger, side):
+        action = side.trigger_axis_action
+        if not trigger or action == 'NONE':
+            return
+        pressure = self._reader.get(trigger, 0.0)
+        if not math.isfinite(pressure):
+            return
+        pressure = self._clamp(pressure, 0.0, 1.0)
+        deadzone = self._clamp(side.trigger_deadzone, 0.0, 0.99)
+        value = max(0.0, (pressure - deadzone) / (1.0 - deadzone))
+        value *= side.trigger_sensitivity * self._analog_frame_scale
+        if side.trigger_invert:
+            value = -value
+        if value == 0.0:
+            return
+        window, area = self._find_view3d_area()
+        if area is None:
+            return
+        rv3d = area.spaces.active.region_3d
+        # Navigate the viewport even when Lock Camera to View is enabled.
+        # Leave camera view before touching RegionView3D; never invoke camera operators.
+        if rv3d is None:
+            return
+        if rv3d.view_perspective == 'CAMERA':
+            rv3d.view_perspective = 'PERSP'
+        if action == 'ZOOM_VIEW':
+            # Exponential distance change is reversible and independent of poll rate.
+            self._zoom_view(-math.expm1(-value * self.DEFAULT_ZOOM_SPEED))
+        else:
+            # Use the executor's navigation defaults, independent of stick speeds.
+            self._execute_separate_axis_action(side, action, value)
+        area.tag_redraw()
 
     def _process_axes(self, axis_keys, mode, axis_settings):
         if not axis_settings or not axis_keys:
@@ -991,6 +1037,8 @@ class ControllerActionExecutor:
 
 
     def reset(self, context=None):
+        self._analog_last_time = None
+        self._analog_frame_scale = 1.0
         self._flush_inputs()
         self.cursor_owner = 'controller'
         self._last_mouse_event = None

@@ -89,6 +89,11 @@ def side_settings_to_dict(side: GamepadSideSettings) -> Dict[str, Any]:
         "controller_button_rightstick": getattr(side, "controller_button_rightstick", "NONE"),
         "controller_button_rightshoulder": getattr(side, "controller_button_rightshoulder", "NONE"),
         "trigger_action": side.trigger_action,
+        "trigger_mode": side.trigger_mode,
+        "trigger_axis_action": side.trigger_axis_action,
+        "trigger_sensitivity": side.trigger_sensitivity,
+        "trigger_deadzone": side.trigger_deadzone,
+        "trigger_invert": side.trigger_invert,
         "axis": axis_settings_to_dict(side.axis),
     }
     # Add extra data properties (only if non-empty)

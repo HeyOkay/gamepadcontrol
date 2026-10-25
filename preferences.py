@@ -255,6 +255,26 @@ class GamepadSideSettings(PropertyGroup):
     controller_button_rightstick_extra: StringProperty(name="Target Mode", description="Target mode for temporary mode shift", default="")
     controller_button_rightshoulder: EnumProperty(items=BUTTON_ACTION_ITEMS, name="Right Shoulder", default='NONE')
     controller_button_rightshoulder_extra: StringProperty(name="Target Mode", description="Target mode for temporary mode shift", default="")
+    trigger_mode: EnumProperty(
+        name="Trigger Mode",
+        items=[('BUTTON', "Button", "Use the existing button mapping", 0),
+               ('ANALOG', "Analog", "Use pressure for continuous viewport navigation", 1)],
+        default='BUTTON',
+    )
+    trigger_axis_action: EnumProperty(
+        name="Analog Action", items=SEPARATE_AXIS_ACTION_ITEMS, default='ZOOM_VIEW',
+    )
+    trigger_sensitivity: FloatProperty(
+        name="Sensitivity", description="Multiplier for analog trigger navigation speed",
+        min=0.0, max=10.0, default=1.0,
+    )
+    trigger_deadzone: FloatProperty(
+        name="Dead Zone", description="Ignore pressure below this value and rescale the remaining range",
+        min=0.0, max=0.99, default=0.05,
+    )
+    trigger_invert: BoolProperty(
+        name="Invert", description="Reverse analog navigation direction", default=False,
+    )
     trigger_action: EnumProperty(items=BUTTON_ACTION_ITEMS, name="Trigger", default='NONE')
     trigger_extra: StringProperty(name="Target Mode", description="Target mode for temporary mode shift", default="")
     axis: PointerProperty(type=GamepadAxisSettings)
