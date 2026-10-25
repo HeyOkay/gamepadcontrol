@@ -102,6 +102,15 @@ blender --background --factory-startup --python-exit-code 1 --python tests/test_
 
 These automated tests do not replace physical controller acceptance tests.
 
+### Hold buttons to move along world Z
+
+Assign **Viewport Move Up** and **Viewport Move Down** to any button (for example
+RB and LB). The view moves along world +Z or -Z for as long as the button is held
+and stops on release. **Viewport Vertical Speed**, configured per mode, is in
+Blender units per second. Both buttons together cancel. Stick navigation and
+analog triggers continue to work at the same time. Only the viewport location
+changes; camera view is exited before moving, and scene objects are untouched.
+
 ### Window Control Freeze (Currently Unresolvable)
 
 When using mouse button actions mapped to gamepad triggers (e.g., left trigger for LEFTMOUSE), clicking on Blender's window controls (titlebar, minimize, maximize, close) or dragging the window may cause the interface to freeze.

@@ -72,6 +72,8 @@ BUTTON_ACTION_ITEMS: List[Tuple[str, str, str, int]] = [
     ("ZERO_KEY", "Enter 0", "Send the 0 key", 41),
     ("MOUSE_WHEEL_UP", "Mouse Wheel Up", "Scroll up", 42),
     ("MOUSE_WHEEL_DOWN", "Mouse Wheel Down", "Scroll down", 43),
+    ("VIEWPORT_MOVE_UP", "Viewport Move Up", "Move the viewport along world +Z while held", 44),
+    ("VIEWPORT_MOVE_DOWN", "Viewport Move Down", "Move the viewport along world -Z while held", 45),
 ]
 
 STICK_MODE_ITEMS: List[Tuple[str, str, str, int]] = [
@@ -297,6 +299,11 @@ def _on_mode_name_update(self, _context):
 
 
 class GamepadModeSettings(PropertyGroup):
+    viewport_move_speed: FloatProperty(
+        name="Viewport Vertical Speed",
+        description="World Z viewport movement speed in Blender units per second",
+        min=0.0, max=100.0, default=2.0,
+    )
     name: StringProperty(name="Name", default="Mode", update=_on_mode_name_update)
     previous_name: StringProperty(name="Previous Name", default="Mode", options={'HIDDEN', 'SKIP_SAVE'})
     use_mode: BoolProperty(

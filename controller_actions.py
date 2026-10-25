@@ -65,6 +65,7 @@ class ControllerActionExecutor:
     CARDINAL_ATTRS = ("up", "down", "left", "right", "dir_right_action")
 
     HOLDABLE_ACTIONS = {"MOUSE_LEFT", "MOUSE_RIGHT"}
+    HELD_VIEWPORT_ACTIONS = {'VIEWPORT_MOVE_UP': 1.0, 'VIEWPORT_MOVE_DOWN': -1.0}
 
     DEFAULT_AXIS_DEADZONE = 0.1
     DEFAULT_CURSOR_SPEED = 0.5
@@ -302,6 +303,9 @@ class ControllerActionExecutor:
         if action == 'NONE' or not button:
             return
         current = bool(self._reader.get(button, False))
+        if action in self.HELD_VIEWPORT_ACTIONS:
+            self._process_held_viewport_action(mode, action, current)
+            return
         if action in self.MODE_SWITCH_ACTIONS:
             extra_data = getattr(side, f"{button}_extra", "") if side else ""
             self._process_mode_switch_button(action, button, current, extra_data)
@@ -329,6 +333,9 @@ class ControllerActionExecutor:
             return
         value = self._reader.get(trigger, 0.0)
         pressed = value > 0.45
+        if action in self.HELD_VIEWPORT_ACTIONS:
+            self._process_held_viewport_action(mode, action, pressed)
+            return
         state_key = self._state_key(mode, trigger)
         previous = self.button_state.get(state_key, False)
         if pressed == previous:
@@ -348,6 +355,23 @@ class ControllerActionExecutor:
                     self.active_mouse_buttons.discard('LEFTMOUSE')
                 elif action == 'MOUSE_RIGHT' and 'RIGHTMOUSE' in self.active_mouse_buttons:
                     self.active_mouse_buttons.discard('RIGHTMOUSE')
+
+    def _process_held_viewport_action(self, mode, action, pressed):
+        if not pressed:
+            return
+        amount = self.HELD_VIEWPORT_ACTIONS[action] * mode.viewport_move_speed * self._analog_frame_scale / 60.0
+        if amount == 0.0:
+            return
+        _, area = self._find_view3d_area()
+        if area is None:
+            return
+        rv3d = area.spaces.active.region_3d
+        if rv3d is None:
+            return
+        if rv3d.view_perspective == 'CAMERA':
+            rv3d.view_perspective = 'PERSP'
+        rv3d.view_location = rv3d.view_location + Vector((0.0, 0.0, amount))
+        area.tag_redraw()
 
     def _process_analog_trigger(self, trigger, side):
         action = side.trigger_axis_action
@@ -477,6 +501,9 @@ class ControllerActionExecutor:
             # Use axis_key + direction for unique state key (e.g., controller_axis_leftx_up)
             state_key = self._state_key(mode, f"{axis_key}_{name}")
             active = allowed and direction == name and action != 'NONE'
+            if action in self.HELD_VIEWPORT_ACTIONS:
+                self._process_held_viewport_action(mode, action, active)
+                continue
             previous = self.axis_state.get(state_key, False)
             if active == previous:
                 continue

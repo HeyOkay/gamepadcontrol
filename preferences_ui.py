@@ -238,6 +238,7 @@ def draw_preferences_ui(prefs: CL_GamepadPreferences, layout, context) -> None:
         col.prop_search(mode, "controller_button_start_extra", prefs, "modes", text="Temporary Mode", icon='NONE')
         col.separator()
     
+    col.prop(mode, "viewport_move_speed")
     columns = box.row()
     left_col = columns.column()
     right_col = columns.column()

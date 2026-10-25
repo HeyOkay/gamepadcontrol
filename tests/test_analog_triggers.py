@@ -11,6 +11,7 @@ import unittest
 from unittest.mock import patch
 
 import bpy
+from mathutils import Quaternion, Vector
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT.parent))
@@ -181,6 +182,91 @@ class AnalogTriggerTests(unittest.TestCase):
                 handler.poll(None)
             self.assertAlmostEqual(reader[self.executor.LEFT_TRIGGER_KEY], raw / 32767.0)
             self.assertAlmostEqual(reader[self.executor.RIGHT_TRIGGER_KEY], raw / 32767.0)
+
+    def held_button(self, action, pressed=True):
+        key = 'controller_button_rightshoulder'
+        self.executor._reader = {key: pressed}
+        self.executor._process_button_action(key, self.mode, action)
+
+    def test_world_z_hold_release_speed_and_camera_lock(self):
+        self.rv.view_location = Vector((1, 2, 3))
+        self.rv.view_rotation = Quaternion((1, 0, 0), 1.2)
+        rotation = self.rv.view_rotation.copy()
+        self.area.spaces.active.lock_camera = True
+        self.rv.view_perspective = 'CAMERA'
+        self.mode.viewport_move_speed = 3.0
+        for _ in range(60):
+            self.held_button('VIEWPORT_MOVE_UP')
+        self.assertAlmostEqual(self.rv.view_location.z, 6.0, places=4)
+        self.assertEqual(tuple(self.rv.view_location)[:2], (1.0, 2.0))
+        self.assertEqual(self.rv.view_rotation, rotation)
+        self.assertEqual(self.rv.view_perspective, 'PERSP')
+        location = self.rv.view_location.copy()
+        for _ in range(10):
+            self.held_button('VIEWPORT_MOVE_UP', False)
+        self.assertEqual(self.rv.view_location, location)
+        self.held_button('VIEWPORT_MOVE_DOWN')
+        self.assertAlmostEqual(self.rv.view_location.z, 5.95, places=4)
+        self.area.spaces.active.lock_camera = False
+
+    def test_world_z_poll_rates_and_opposing_buttons(self):
+        self.mode.viewport_move_speed = 2.0
+        for rate in (30, 60, 120):
+            self.rv.view_location = Vector((0, 0, 0))
+            self.executor._analog_frame_scale = 60 / rate
+            for _ in range(rate):
+                self.held_button('VIEWPORT_MOVE_UP')
+            self.assertAlmostEqual(self.rv.view_location.z, 2.0, places=4)
+        self.rv.view_location = Vector((0, 0, 0))
+        for _ in range(120):
+            self.held_button('VIEWPORT_MOVE_UP')
+            self.held_button('VIEWPORT_MOVE_DOWN')
+        self.assertAlmostEqual(self.rv.view_location.z, 0.0, places=6)
+
+    def test_world_z_with_stick_pan_and_analog_zoom(self):
+        side = self.mode.right_side
+        side.controller_button_rightshoulder = 'VIEWPORT_MOVE_UP'
+        side.trigger_mode = 'ANALOG'
+        side.axis.stick_mode = 'COMBINED'
+        side.axis.combined_action = 'PAN_VIEW'
+        side.axis.invert_y = False
+        self.rv.view_location = Vector((0, 0, 0))
+        self.rv.view_rotation = Quaternion((1, 0, 0), 1.2)
+        expected = self.rv.view_rotation @ (Vector((-.5, .4, 0)) * side.axis.pan_speed)
+        expected.z += self.mode.viewport_move_speed / 60
+        self.executor._reader = {
+            'controller_button_rightshoulder': True,
+            self.executor.RIGHT_TRIGGER_KEY: .525,
+            'controller_axis_rightx': .5,
+            'controller_axis_righty': .4,
+        }
+        with patch.object(self.executor, '_event_simulate', side_effect=AssertionError('OS event')):
+            self.executor._process_side(self.mode, side, self.executor.RIGHT_BUTTONS,
+                                        self.executor.RIGHT_AXIS_KEYS, self.executor.RIGHT_TRIGGER_KEY)
+        self.assertLess((self.rv.view_location - expected).length, 1e-6)
+        self.assertLess(self.rv.view_distance, 10.0)
+
+    def test_world_z_settings_roundtrip_and_legacy_default(self):
+        self.mode.viewport_move_speed = 4.0
+        self.mode.left_side.controller_button_leftshoulder = 'VIEWPORT_MOVE_DOWN'
+        self.mode.right_side.controller_button_rightshoulder = 'VIEWPORT_MOVE_UP'
+        data = io.mode_to_dict(self.mode)
+        other = bpy.context.window_manager.test_gamepad_modes.add()
+        io.dict_to_mode(data, other)
+        self.assertEqual(other.viewport_move_speed, 4.0)
+        self.assertEqual(other.right_side.controller_button_rightshoulder, 'VIEWPORT_MOVE_UP')
+        io.dict_to_mode({'name': 'Legacy'}, other)
+        self.assertEqual(other.viewport_move_speed, 2.0)
+
+    def test_world_z_zero_speed_and_missing_viewport(self):
+        before = self.rv.view_location.copy()
+        self.mode.viewport_move_speed = 0
+        self.held_button('VIEWPORT_MOVE_UP')
+        self.assertEqual(self.rv.view_location, before)
+        self.mode.viewport_move_speed = 2
+        with patch.object(self.executor, '_find_view3d_area', return_value=(None, None)):
+            self.held_button('VIEWPORT_MOVE_UP')
+        self.assertEqual(self.rv.view_location, before)
 
 
 if __name__ == '__main__':

@@ -124,6 +124,7 @@ def mode_to_dict(mode: GamepadModeSettings) -> Dict[str, Any]:
     """Serialize GamepadModeSettings to a dictionary."""
     data = {
         "name": mode.name,
+        "viewport_move_speed": mode.viewport_move_speed,
         "controller_button_back": mode.controller_button_back,
         "controller_button_start": mode.controller_button_start,
         "use_mode": bool(getattr(mode, "use_mode", True)),
@@ -143,6 +144,7 @@ def mode_to_dict(mode: GamepadModeSettings) -> Dict[str, Any]:
 def dict_to_mode(data: Dict[str, Any], mode: GamepadModeSettings) -> None:
     """Deserialize a dictionary into GamepadModeSettings."""
     mode.name = data.get("name", "Imported Mode")
+    mode.viewport_move_speed = data.get("viewport_move_speed", 2.0)
     mode.controller_button_back = data.get("controller_button_back", "NONE")
     mode.controller_button_start = data.get("controller_button_start", "NONE")
     mode.use_mode = data.get("use_mode", True)
